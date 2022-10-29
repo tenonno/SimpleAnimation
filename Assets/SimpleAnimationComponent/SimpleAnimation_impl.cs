@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -8,183 +9,210 @@ using UnityEngine;
 using UnityEngine.Playables;
 
 [RequireComponent(typeof(Animator))]
-public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
+public partial class SimpleAnimation : IAnimationClipSource
 {
-    const string kDefaultStateName = "Default";
-    private class StateEnumerable : IEnumerable<State>
+    private const string DefaultStateName = "Default";
+
+    private class StateEnumerable : IEnumerable<IState>
     {
-        private SimpleAnimation m_Owner;
+        private readonly SimpleAnimation _owner;
+
         public StateEnumerable(SimpleAnimation owner)
         {
-            m_Owner = owner;
+            _owner = owner;
         }
 
-        public IEnumerator<State> GetEnumerator()
+        public IEnumerator<IState> GetEnumerator()
         {
-            return new StateEnumerator(m_Owner);
+            return new StateEnumerator(_owner);
         }
 
         IEnumerator IEnumerable.GetEnumerator()
         {
-            return new StateEnumerator(m_Owner);
+            return new StateEnumerator(_owner);
         }
 
-        class StateEnumerator : IEnumerator<State>
+        private class StateEnumerator : IEnumerator<IState>
         {
-            private SimpleAnimation m_Owner;
-            private IEnumerator<SimpleAnimationPlayable.IState> m_Impl;
+            private readonly SimpleAnimation _owner;
+            private readonly IEnumerator<SimpleAnimationPlayable.IState> _impl;
+
             public StateEnumerator(SimpleAnimation owner)
             {
-                m_Owner = owner;
-                m_Impl = m_Owner.m_Playable.GetStates().GetEnumerator();
+                _owner = owner;
+                _impl = _owner._playable.GetStates().GetEnumerator();
                 Reset();
             }
 
-            State GetCurrent()
+            private IState GetCurrent()
             {
-                return new StateImpl(m_Impl.Current, m_Owner);
+                return new StateImpl(_impl.Current, _owner);
             }
 
-            object IEnumerator.Current { get { return GetCurrent(); } }
+            object IEnumerator.Current => GetCurrent();
 
-            State IEnumerator<State>.Current { get { return GetCurrent(); } }
+            IState IEnumerator<IState>.Current => GetCurrent();
 
-            public void Dispose() { }
+            public void Dispose()
+            {
+            }
 
             public bool MoveNext()
             {
-                return m_Impl.MoveNext();
+                return _impl.MoveNext();
             }
 
             public void Reset()
             {
-                m_Impl.Reset();
+                _impl.Reset();
             }
         }
     }
-    private class StateImpl : State
+
+    private sealed class StateImpl : IState
     {
+        private readonly SimpleAnimationPlayable.IState _stateHandle;
+        private readonly SimpleAnimation _component;
+
         public StateImpl(SimpleAnimationPlayable.IState handle, SimpleAnimation component)
         {
-            m_StateHandle = handle;
-            m_Component = component;
+            _stateHandle = handle;
+            _component = component;
         }
 
-        private SimpleAnimationPlayable.IState m_StateHandle;
-        private SimpleAnimation m_Component;
-
-        bool State.enabled
+        bool IState.enabled
         {
-            get { return m_StateHandle.enabled; }
+            get => _stateHandle.enabled;
             set
             {
-                m_StateHandle.enabled = value;
+                _stateHandle.enabled = value;
                 if (value)
                 {
-                    m_Component.Kick();
+                    _component.Kick();
                 }
             }
         }
 
-        bool State.isValid
+        bool IState.isValid => _stateHandle.IsValid();
+
+        float IState.time
         {
-            get { return m_StateHandle.IsValid(); }
-        }
-        float State.time
-        {
-            get { return m_StateHandle.time; }
-            set { m_StateHandle.time = value;
-                m_Component.Kick(); }
-        }
-        float State.normalizedTime
-        {
-            get { return m_StateHandle.normalizedTime; }
-            set { m_StateHandle.normalizedTime = value;
-                  m_Component.Kick();}
-        }
-        float State.speed
-        {
-            get { return m_StateHandle.speed; }
-            set { m_StateHandle.speed = value;
-                  m_Component.Kick();}
+            get => _stateHandle.time;
+            set
+            {
+                _stateHandle.time = value;
+                _component.Kick();
+            }
         }
 
-        string State.name
+        float IState.normalizedTime
         {
-            get { return m_StateHandle.name; }
-            set { m_StateHandle.name = value; }
-        }
-        float State.weight
-        {
-            get { return m_StateHandle.weight; }
-            set { m_StateHandle.weight = value;
-                m_Component.Kick();}
-        }
-        float State.length
-        {
-            get { return m_StateHandle.length; }
+            get => _stateHandle.normalizedTime;
+            set
+            {
+                _stateHandle.normalizedTime = value;
+                _component.Kick();
+            }
         }
 
-        AnimationClip State.clip
+        float IState.speed
         {
-            get { return m_StateHandle.clip; }
+            get => _stateHandle.speed;
+            set
+            {
+                _stateHandle.speed = value;
+                _component.Kick();
+            }
         }
 
-        WrapMode State.wrapMode
+        string IState.name
         {
-            get { return m_StateHandle.wrapMode; }
-            set { Debug.LogError("Not Implemented"); }
+            get => _stateHandle.name;
+            set { _stateHandle.name = value; }
+        }
+
+        float IState.weight
+        {
+            get => _stateHandle.weight;
+            set
+            {
+                _stateHandle.weight = value;
+                _component.Kick();
+            }
+        }
+
+        float IState.length => _stateHandle.length;
+
+        AnimationClip IState.clip => _stateHandle.clip;
+
+        WrapMode IState.wrapMode
+        {
+            get => _stateHandle.wrapMode;
+            set => Debug.LogError("Not Implemented");
         }
     }
 
-    [System.Serializable]
+    [Serializable]
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
     public class EditorState
     {
-        public AnimationClip clip;
-        public string name;
+        public AnimationClip? clip;
+        public string name = null!;
         public bool defaultState;
     }
 
-    protected void Kick()
+    private void Kick()
     {
-        if (!m_IsPlaying)
-        {
-            m_Graph.Play();
-            m_IsPlaying = true;
-        }
+        if (_isPlaying) return;
+        _graph.Play();
+        _isPlaying = true;
     }
 
-    protected PlayableGraph m_Graph;
-    protected PlayableHandle m_LayerMixer;
-    protected PlayableHandle m_TransitionMixer;
-    protected Animator m_Animator;
-    protected bool m_Initialized;
-    protected bool m_IsPlaying;
+    private PlayableGraph _graph;
+    private PlayableHandle _layerMixer;
+    private PlayableHandle _transitionMixer;
+    private Animator? _animator;
+    private bool _initialized;
+    private bool _isPlaying;
 
-    protected SimpleAnimationPlayable m_Playable;
+    private SimpleAnimationPlayable? _playable;
 
-    [SerializeField]
-    protected bool m_PlayAutomatically = true;
+    // ReSharper disable InconsistentNaming
 
-    [SerializeField]
-    protected bool m_AnimatePhysics = false;
+    [SerializeField] private bool m_PlayAutomatically = true;
 
-    [SerializeField]
-    protected AnimatorCullingMode m_CullingMode = AnimatorCullingMode.CullUpdateTransforms;
+    [SerializeField, Obsolete(nameof(_updateMode))]
+    private bool m_AnimatePhysics;
 
-    [SerializeField]
-    protected WrapMode m_WrapMode;
+    [SerializeField] private AnimatorUpdateMode _updateMode;
 
-    [SerializeField]
-    protected AnimationClip m_Clip;
+    [SerializeField] private AnimatorCullingMode m_CullingMode = AnimatorCullingMode.CullUpdateTransforms;
 
-    [SerializeField]
-    private EditorState[] m_States;
+    [SerializeField] private WrapMode m_WrapMode;
 
-    protected virtual void OnEnable()
+    [SerializeField] private AnimationClip? m_Clip;
+
+    [SerializeField] private EditorState[]? m_States;
+
+    // ReSharper restore InconsistentNaming
+
+    private AnimatorUpdateMode GetUpdateMode()
+    {
+#pragma warning disable CS0618
+        if (m_AnimatePhysics)
+        {
+            m_AnimatePhysics = false;
+#pragma warning restore CS0618
+            _updateMode = AnimatorUpdateMode.AnimatePhysics;
+        }
+
+        return _updateMode;
+    }
+
+    private void OnEnable()
     {
         Initialize();
-        m_Graph.Play();
+        _graph.Play();
         if (m_PlayAutomatically)
         {
             Stop();
@@ -192,44 +220,46 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
         }
     }
 
-    protected virtual void OnDisable()
+    private void OnDisable()
     {
-        if (m_Initialized)
+        if (_initialized)
         {
             Stop();
-            m_Graph.Stop();
+            _graph.Stop();
         }
     }
 
     private void Reset()
     {
-        if (m_Graph.IsValid())
-            m_Graph.Destroy();
-        
-        m_Initialized = false;
+        if (_graph.IsValid())
+            _graph.Destroy();
+
+        _initialized = false;
     }
 
     private void Initialize()
     {
-        if (m_Initialized)
+        if (_initialized)
             return;
 
-        m_Animator = GetComponent<Animator>();
-        m_Animator.updateMode = m_AnimatePhysics ? AnimatorUpdateMode.AnimatePhysics : AnimatorUpdateMode.Normal;
-        m_Animator.cullingMode = m_CullingMode;
-        m_Graph = PlayableGraph.Create();
-        m_Graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
-        SimpleAnimationPlayable template = new SimpleAnimationPlayable();
+        _animator = GetComponent<Animator>();
+        _animator.updateMode = GetUpdateMode();
+        _animator.cullingMode = m_CullingMode;
+        _graph = PlayableGraph.Create();
+        _graph.SetTimeUpdateMode(DirectorUpdateMode.GameTime);
+        var template = new SimpleAnimationPlayable();
 
-        var playable = ScriptPlayable<SimpleAnimationPlayable>.Create(m_Graph, template, 1);
-        m_Playable = playable.GetBehaviour();
-        m_Playable.onDone += OnPlayableDone;
+        var playable = ScriptPlayable<SimpleAnimationPlayable>.Create(_graph, template, 1);
+        _playable = playable.GetBehaviour();
+        _playable.onDone += OnPlayableDone;
         if (m_States == null)
         {
             m_States = new EditorState[1];
-            m_States[0] = new EditorState();
-            m_States[0].defaultState = true;
-            m_States[0].name = "Default";
+            m_States[0] = new EditorState
+            {
+                defaultState = true,
+                name = "Default"
+            };
         }
 
 
@@ -239,45 +269,45 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
             {
                 if (state.clip)
                 {
-                    m_Playable.AddClip(state.clip, state.name);
+                    _playable.AddClip(state.clip, state.name);
                 }
             }
         }
 
         EnsureDefaultStateExists();
 
-        AnimationPlayableUtilities.Play(m_Animator, m_Playable.playable, m_Graph);
+        AnimationPlayableUtilities.Play(_animator, _playable.playable, _graph);
         Play();
         Kick();
-        m_Initialized = true;
+        _initialized = true;
     }
 
     private void EnsureDefaultStateExists()
     {
-        if ( m_Playable != null && m_Clip != null && m_Playable.GetState(kDefaultStateName) == null )
+        if (_playable != null && m_Clip != null && _playable.GetState(DefaultStateName) == null)
         {
-            m_Playable.AddClip(m_Clip, kDefaultStateName);
+            _playable.AddClip(m_Clip, DefaultStateName);
             Kick();
         }
     }
 
-    protected virtual void Awake()
+    private void Awake()
     {
         Initialize();
     }
 
-    protected void OnDestroy()
+    private void OnDestroy()
     {
-        if (m_Graph.IsValid())
+        if (_graph.IsValid())
         {
-            m_Graph.Destroy();
+            _graph.Destroy();
         }
     }
 
     private void OnPlayableDone()
     {
-        m_Graph.Stop();
-        m_IsPlaying = false;
+        _graph.Stop();
+        _isPlaying = false;
     }
 
     private void RebuildStates()
@@ -291,30 +321,36 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
             newState.name = state.name;
             list.Add(newState);
         }
+
         m_States = list.ToArray();
     }
 
-    EditorState CreateDefaultEditorState()
+    private EditorState CreateDefaultEditorState()
     {
-        var defaultState = new EditorState();
-        defaultState.name = "Default";
-        defaultState.clip = m_Clip;
-        defaultState.defaultState = true;
+        var defaultState = new EditorState
+        {
+            name = "Default",
+            clip = m_Clip,
+            defaultState = true
+        };
 
         return defaultState;
     }
 
-    static void LegacyClipCheck(AnimationClip clip)
+    private static void LegacyClipCheck(AnimationClip clip)
     {
         if (clip && clip.legacy)
         {
-            throw new ArgumentException(string.Format("Legacy clip {0} cannot be used in this component. Set .legacy property to false before using this clip", clip));
+            throw new ArgumentException(
+                $"Legacy clip {clip} cannot be used in this component. Set .legacy property to false before using this clip");
         }
     }
-    
-    void InvalidLegacyClipError(string clipName, string stateName)
+
+    private void InvalidLegacyClipError(string clipName, string stateName)
     {
-        Debug.LogErrorFormat(this.gameObject,"Animation clip {0} in state {1} is Legacy. Set clip.legacy to false, or reimport as Generic to use it with SimpleAnimationComponent", clipName, stateName);
+        Debug.LogErrorFormat(this.gameObject,
+            "Animation clip {0} in state {1} is Legacy. Set clip.legacy to false, or reimport as Generic to use it with SimpleAnimationComponent",
+            clipName, stateName);
     }
 
     private void OnValidate()
@@ -325,14 +361,16 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
 
         if (m_Clip && m_Clip.legacy)
         {
-            Debug.LogErrorFormat(this.gameObject,"Animation clip {0} is Legacy. Set clip.legacy to false, or reimport as Generic to use it with SimpleAnimationComponent", m_Clip.name);
+            Debug.LogErrorFormat(this.gameObject,
+                "Animation clip {0} is Legacy. Set clip.legacy to false, or reimport as Generic to use it with SimpleAnimationComponent",
+                m_Clip.name);
             m_Clip = null;
         }
 
         //Ensure at least one state exists
         if (m_States == null || m_States.Length == 0)
         {
-            m_States = new EditorState[1];   
+            m_States = new EditorState[1];
         }
 
         //Create default state if it's null
@@ -356,22 +394,23 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
 
 
         //Make sure only one state is default
-        for (int i = 1; i < m_States.Length; i++)
+        for (var i = 1; i < m_States.Length; i++)
         {
             if (m_States[i] == null)
             {
                 m_States[i] = new EditorState();
             }
+
             m_States[i].defaultState = false;
         }
 
         //Ensure state names are unique
-        int stateCount = m_States.Length;
-        string[] names = new string[stateCount];
+        var stateCount = m_States.Length;
+        var names = new string[stateCount];
 
-        for (int i = 0; i < stateCount; i++)
+        for (var i = 0; i < stateCount; i++)
         {
-            EditorState state = m_States[i];
+            var state = m_States[i];
             if (state.name == "" && state.clip)
             {
                 state.name = state.clip.name;
@@ -389,9 +428,9 @@ public partial class SimpleAnimation: MonoBehaviour, IAnimationClipSource
             }
         }
 
-        m_Animator = GetComponent<Animator>();
-        m_Animator.updateMode = m_AnimatePhysics ? AnimatorUpdateMode.AnimatePhysics : AnimatorUpdateMode.Normal;
-        m_Animator.cullingMode = m_CullingMode;
+        _animator = GetComponent<Animator>();
+        _animator.updateMode = GetUpdateMode();
+        _animator.cullingMode = m_CullingMode;
     }
 
     public void GetAnimationClips(List<AnimationClip> results)

@@ -1,13 +1,13 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using UnityEngine;
-using UnityEngine.Playables;
 
 [RequireComponent(typeof(Animator))]
-public partial class SimpleAnimation: MonoBehaviour
+public sealed partial class SimpleAnimation : MonoBehaviour
 {
-    public interface State
+    [SuppressMessage("ReSharper", "InconsistentNaming")]
+    public interface IState
     {
         bool enabled { get; set; }
         bool isValid { get; }
@@ -19,55 +19,60 @@ public partial class SimpleAnimation: MonoBehaviour
         float length { get; }
         AnimationClip clip { get; }
         WrapMode wrapMode { get; set; }
-
     }
+
+    // ReSharper disable InconsistentNaming
+
     public Animator animator
     {
         get
         {
-            if (m_Animator == null)
+            if (_animator == null)
             {
-                m_Animator = GetComponent<Animator>();
+                _animator = GetComponent<Animator>();
             }
-            return m_Animator;
+
+            return _animator;
         }
     }
 
-    public bool animatePhysics
-    {
-        get { return m_AnimatePhysics; }
-        set { m_AnimatePhysics = value; animator.updateMode = m_AnimatePhysics ? AnimatorUpdateMode.AnimatePhysics : AnimatorUpdateMode.Normal; }
-    }
+    [Obsolete] public bool animatePhysics => m_AnimatePhysics;
 
     public AnimatorCullingMode cullingMode
     {
-        get { return animator.cullingMode; }
-        set { m_CullingMode = value;  animator.cullingMode = m_CullingMode; }
+        get => animator.cullingMode;
+        set
+        {
+            m_CullingMode = value;
+            animator.cullingMode = m_CullingMode;
+        }
     }
 
-    public bool isPlaying { get { return m_Playable.IsPlaying(); } }
+    public bool isPlaying => _playable.IsPlaying();
 
     public bool playAutomatically
     {
-        get { return m_PlayAutomatically; }
-        set { m_PlayAutomatically = value; }
+        get => m_PlayAutomatically;
+        set => m_PlayAutomatically = value;
     }
 
     public AnimationClip clip
     {
-        get { return m_Clip; }
+        get => m_Clip;
         set
         {
             LegacyClipCheck(value);
             m_Clip = value;
-        }  
+        }
     }
 
     public WrapMode wrapMode
     {
-        get { return m_WrapMode; }
-        set { m_WrapMode = value; }
+        get => m_WrapMode;
+        set => m_WrapMode = value;
     }
+
+    // ReSharper restore InconsistentNaming
 
     public void AddClip(AnimationClip clip, string newName)
     {
@@ -77,58 +82,59 @@ public partial class SimpleAnimation: MonoBehaviour
 
     public void Blend(string stateName, float targetWeight, float fadeLength)
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
-        m_Playable.Blend(stateName, targetWeight,  fadeLength);
+        _playable.Blend(stateName, targetWeight, fadeLength);
     }
 
     public void CrossFade(string stateName, float fadeLength)
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
-        m_Playable.Crossfade(stateName, fadeLength);
+        _playable.Crossfade(stateName, fadeLength);
     }
 
     public void CrossFadeQueued(string stateName, float fadeLength, QueueMode queueMode)
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
-        m_Playable.CrossfadeQueued(stateName, fadeLength, queueMode);
+        _playable.CrossfadeQueued(stateName, fadeLength, queueMode);
     }
 
     public int GetClipCount()
     {
-        return m_Playable.GetClipCount();
+        return _playable.GetClipCount();
     }
 
     public bool IsPlaying(string stateName)
     {
-        return m_Playable.IsPlaying(stateName);
+        return _playable.IsPlaying(stateName);
     }
 
     public void Stop()
     {
-        m_Playable.StopAll();
+        _playable.StopAll();
     }
 
     public void Stop(string stateName)
     {
-        m_Playable.Stop(stateName);
+        _playable.Stop(stateName);
     }
 
     public void Sample()
     {
-        m_Graph.Evaluate();
+        _graph.Evaluate();
     }
 
     public bool Play()
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
         if (m_Clip != null && m_PlayAutomatically)
         {
-            m_Playable.Play(kDefaultStateName);
+            _playable.Play(DefaultStateName);
         }
+
         return false;
     }
 
@@ -136,16 +142,15 @@ public partial class SimpleAnimation: MonoBehaviour
     {
         LegacyClipCheck(clip);
         Kick();
-        if (m_Playable.AddClip(clip, name))
+        if (_playable.AddClip(clip, name))
         {
             RebuildStates();
         }
-        
     }
 
     public void RemoveState(string name)
     {
-        if (m_Playable.RemoveClip(name))
+        if (_playable.RemoveClip(name))
         {
             RebuildStates();
         }
@@ -153,16 +158,16 @@ public partial class SimpleAnimation: MonoBehaviour
 
     public bool Play(string stateName)
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
-        return m_Playable.Play(stateName);
+        return _playable.Play(stateName);
     }
 
     public void PlayQueued(string stateName, QueueMode queueMode)
     {
-        m_Animator.enabled = true;
+        _animator.enabled = true;
         Kick();
-        m_Playable.PlayQueued(stateName, queueMode);
+        _playable.PlayQueued(stateName, queueMode);
     }
 
     public void RemoveClip(AnimationClip clip)
@@ -170,42 +175,37 @@ public partial class SimpleAnimation: MonoBehaviour
         if (clip == null)
             throw new System.NullReferenceException("clip");
 
-        if ( m_Playable.RemoveClip(clip) )
+        if (_playable.RemoveClip(clip))
         {
             RebuildStates();
         }
-       
     }
 
     public void Rewind()
     {
         Kick();
-        m_Playable.Rewind();
+        _playable.Rewind();
     }
 
     public void Rewind(string stateName)
     {
         Kick();
-        m_Playable.Rewind(stateName);
+        _playable.Rewind(stateName);
     }
 
-    public State GetState(string stateName)
+    public IState GetState(string stateName)
     {
-        SimpleAnimationPlayable.IState state = m_Playable.GetState(stateName);
+        SimpleAnimationPlayable.IState state = _playable.GetState(stateName);
         if (state == null)
             return null;
 
         return new StateImpl(state, this);
     }
 
-    public IEnumerable<State> GetStates()
+    public IEnumerable<IState> GetStates()
     {
         return new StateEnumerable(this);
     }
 
-    public State this[string name]
-    {
-        get { return GetState(name); }
-    }
-
+    public IState this[string name] => GetState(name);
 }
